@@ -115,10 +115,22 @@
   var QUOTE_REQUIRED = {
     audit: ["scale"],
     setup: ["systems", "scale", "revenue"],
+    operations: ["services", "revenue"],
     invoicing: ["volume", "scale", "revenue"],
     phone: ["volume", "scale", "revenue"],
-    bundle: ["calls", "invoices", "scale", "revenue"],
+    quoting: ["volume", "scale", "revenue"],
+    reporting: ["scale", "revenue"],
   };
+
+  var QUOTE_FORM_URL = "https://keystoneconsultancy.app.n8n.cloud/webhook/ks-quote-form?c=KS-DEMO-01";
+  var AUDIT_FORM_URL = "https://keystoneconsultancy.app.n8n.cloud/webhook/ks-audit-form";
+
+  // One-off setup fee per system, and the multi-service setup discount.
+  var SETUP_FEES = { invoicing: 1500, phone: 1250, quoting: 1000, reporting: 1250 };
+  var SETUP_DISCOUNT = function (n) { return n >= 4 ? 0.8 : n === 3 ? 0.85 : n === 2 ? 0.9 : 1; };
+  // Monthly operations management tiers by number of services run.
+  var TIER_PRICE = { one: 495, upto3: 995, all: 1650 };
+  var TIER_NAME = { one: "Essentials", upto3: "Growth", all: "Complete" };
 
   function roundTo(value, unit) {
     return Math.round(value / unit) * unit;
@@ -141,7 +153,11 @@
     var raw = base * mult;
     var clamped = Math.min(Math.max(raw, base * floorPct), base * ceilPct);
     var mid = roundTo(clamped, midUnit);
-    return { low: roundTo(mid * 0.9, 50), high: roundTo(mid * 1.1, 50), mid: mid };
+    var step = base < 600 ? 25 : 50;
+    // "From" prices are a floor: never quote below them, and never show a range like £150–£150.
+    var low = Math.max(roundTo(mid * 0.9, step), opts.minLow || 0);
+    var high = Math.max(roundTo(mid * 1.1, step), low + step);
+    return { low: low, high: high, mid: mid };
   }
 
   function declineResult() {
@@ -157,7 +173,8 @@
       if (scale === "justme") return declineResult();
       return {
         decline: false,
-        note: "Based on what you've told us, the Finance Ops Audit is a strong starting point for your business.",
+        note: "Based on what you've told us, the Finance Ops Audit is a strong starting point for your business. The questionnaire takes about ten minutes.",
+        link: { href: AUDIT_FORM_URL, label: "Start the audit questionnaire" },
       };
     },
     setup: function (getVals) {
@@ -165,14 +182,25 @@
       var scale = getVals("scale")[0];
       var revenue = getVals("revenue")[0];
       if (isPoorFit(scale, revenue)) return declineResult();
-      var count = systems.length;
-      var base = count <= 1 ? 1500 : count <= 3 ? 2000 : 2500;
+      var base = systems.reduce(function (sum, s) { return sum + (SETUP_FEES[s] || 0); }, 0) * SETUP_DISCOUNT(systems.length);
       var range = computeRange(base, [REVENUE_MULT[revenue], SCALE_MULT[scale]], { floorPct: 0, ceilPct: Infinity, midUnit: 100 });
       return {
         decline: false,
         range: range,
         unit: " one-off",
-        note: "Most businesses with a similar build invest around this to get their systems designed and connected. The exact figure is confirmed on a call.",
+        note: "Most businesses with a similar build invest around this to get their systems connected and tested" + (systems.length > 1 ? ", including a multi-service discount" : "") + ". The exact figure is confirmed on a call.",
+      };
+    },
+    operations: function (getVals) {
+      var services = getVals("services")[0];
+      var revenue = getVals("revenue")[0];
+      if (revenue === "under500k") return declineResult();
+      var range = computeRange(TIER_PRICE[services], [REVENUE_MULT[revenue]], { minLow: TIER_PRICE[services] });
+      return {
+        decline: false,
+        range: range,
+        unit: "/month",
+        note: "This is our " + TIER_NAME[services] + " plan, which includes monitoring, fixes, instant alerts and a monthly value report. The exact figure is confirmed on a call.",
       };
     },
     invoicing: function (getVals) {
@@ -180,43 +208,38 @@
       var scale = getVals("scale")[0];
       var revenue = getVals("revenue")[0];
       if (isPoorFit(scale, revenue)) return declineResult();
-      var range = computeRange(450, [REVENUE_MULT[revenue], SCALE_MULT[scale], INVOICE_VOL_MULT[volume]]);
-      return {
-        decline: false,
-        range: range,
-        unit: "/month",
-        note: "Most businesses like yours invest in this range for invoicing and collections. The exact figure is confirmed on a call.",
-      };
+      var range = computeRange(395, [INVOICE_VOL_MULT[volume], REVENUE_MULT[revenue], SCALE_MULT[scale]], { minLow: 395 });
+      return { decline: false, range: range, unit: "/month", note: "Most businesses like yours invest in this range for invoice automation. The exact figure is confirmed on a call." };
     },
     phone: function (getVals) {
       var volume = getVals("volume")[0];
       var scale = getVals("scale")[0];
       var revenue = getVals("revenue")[0];
       if (isPoorFit(scale, revenue)) return declineResult();
-      var range = computeRange(2200, [REVENUE_MULT[revenue], SCALE_MULT[scale], CALL_VOL_MULT[volume]]);
-      return {
-        decline: false,
-        range: range,
-        unit: "/month",
-        note: "Most businesses like yours invest in this range for round-the-clock phone booking. The exact figure is confirmed on a call.",
-      };
+      var range = computeRange(450, [CALL_VOL_MULT[volume], REVENUE_MULT[revenue], SCALE_MULT[scale]], { minLow: 450 });
+      return { decline: false, range: range, unit: "/month", note: "Most businesses like yours invest in this range for AI phone booking. Call costs above 500 minutes a month are passed on at cost. The exact figure is confirmed on a call." };
     },
-    bundle: function (getVals) {
-      var calls = getVals("calls")[0];
-      var invoices = getVals("invoices")[0];
+    quoting: function (getVals) {
+      var volume = getVals("volume")[0];
       var scale = getVals("scale")[0];
       var revenue = getVals("revenue")[0];
       if (isPoorFit(scale, revenue)) return declineResult();
-      var avgVol = (CALL_VOL_MULT[calls] + INVOICE_VOL_MULT[invoices]) / 2;
-      var range = computeRange(2650, [REVENUE_MULT[revenue], SCALE_MULT[scale], avgVol]);
-      return {
-        decline: false,
-        range: range,
-        unit: "/month",
-        note: "Most businesses like yours invest in this range for the full bundle. The exact figure is confirmed on a call.",
-      };
+      var range = computeRange(195, [INVOICE_VOL_MULT[volume], REVENUE_MULT[revenue], SCALE_MULT[scale]], { minLow: 195 });
+      return { decline: false, range: range, unit: "/month", link: { href: QUOTE_FORM_URL, label: "Try the live calculator (demo business)" }, note: "Most businesses like yours invest in this range for an instant quote calculator. The exact figure is confirmed on a call." };
+    },
+    reporting: function (getVals) {
+      var scale = getVals("scale")[0];
+      var revenue = getVals("revenue")[0];
+      if (isPoorFit(scale, revenue)) return declineResult();
+      var range = computeRange(295, [REVENUE_MULT[revenue], SCALE_MULT[scale]], { minLow: 295 });
+      return { decline: false, range: range, unit: "/month", note: "Most businesses like yours invest in this range for the dashboard and weekly money email. The exact figure is confirmed on a call." };
     },
   };
+
+  function extraLink(result) {
+    if (!result.link) return "";
+    return '<a href="' + result.link.href + '" class="btn btn-secondary quote-cta" target="_blank" rel="noopener">' + result.link.label + "</a>";
+  }
 
   function renderQuoteResult(el, result) {
     if (!el) return;
@@ -227,11 +250,11 @@
         '<span class="quote-range">' + fmtGBP(result.range.low) + "–" + fmtGBP(result.range.high) +
         '<span class="unit">' + result.unit + "</span></span>" +
         '<p class="quote-note">' + result.note + "</p>" +
-        '<a href="#contact" class="btn btn-primary quote-cta">Book a call to confirm</a>';
+        extraLink(result) + '<a href="#contact" class="btn btn-primary quote-cta">Book a call to confirm</a>';
     } else {
       el.innerHTML =
         '<p class="quote-note">' + result.note + "</p>" +
-        '<a href="#contact" class="btn btn-primary quote-cta">Book a call to confirm</a>';
+        extraLink(result) + '<a href="#contact" class="btn btn-primary quote-cta">Book a call to confirm</a>';
     }
     el.classList.add("is-visible");
   }
@@ -277,7 +300,7 @@
   var QUOTE_CONFIGS = {
     audit: {
       title: "Finance Ops Audit",
-      subtitle: "Two-week engagement",
+      subtitle: "Two-week review",
       submitLabel: "Check if we're a fit",
       incompleteHint: "Please answer this question.",
       questions: [
@@ -286,7 +309,7 @@
     },
     setup: {
       title: "System Setup",
-      subtitle: "Four-to-eight-week build",
+      subtitle: "Two-to-four-week build",
       submitLabel: "Get my estimate",
       incompleteHint: "Please select at least one system and answer both questions.",
       questions: [
@@ -295,20 +318,29 @@
           label: "Which systems are you interested in?",
           multi: true,
           options: [
-            { value: "invoicing", label: "Invoicing" },
-            { value: "collections", label: "Collections" },
-            { value: "phone", label: "Phone Booking" },
-            { value: "quoting", label: "Quoting" },
-            { value: "reporting", label: "Reporting" },
+            { value: "invoicing", label: "Invoice Automation" },
+            { value: "phone", label: "AI Phone Booking" },
+            { value: "quoting", label: "Quote Calculator" },
+            { value: "reporting", label: "Reporting Dashboard" },
           ],
         },
         { group: "scale", label: "Roughly how many staff do you have?", options: SCALE_OPTIONS },
         { group: "revenue", label: "What's your approximate annual revenue?", options: REVENUE_OPTIONS },
       ],
     },
+    operations: {
+      title: "Monthly Operations Management",
+      subtitle: "Included in every plan",
+      submitLabel: "Get my estimate",
+      incompleteHint: "Please answer both questions.",
+      questions: [
+        { group: "services", label: "How many services would we run for you?", options: [{ value: "one", label: "One" }, { value: "upto3", label: "Two or three" }, { value: "all", label: "All of them" }] },
+        { group: "revenue", label: "What's your approximate annual revenue?", options: REVENUE_OPTIONS },
+      ],
+    },
     invoicing: {
-      title: "Invoice + Collections",
-      subtitle: "Ongoing retainer",
+      title: "Invoice Automation",
+      subtitle: "Ongoing service",
       submitLabel: "Get my estimate",
       incompleteHint: "Please answer all three questions.",
       questions: [
@@ -318,8 +350,8 @@
       ],
     },
     phone: {
-      title: "Phone Booking",
-      subtitle: "Ongoing retainer",
+      title: "AI Phone Booking",
+      subtitle: "Ongoing service",
       submitLabel: "Get my estimate",
       incompleteHint: "Please answer all three questions.",
       questions: [
@@ -328,14 +360,23 @@
         { group: "revenue", label: "What's your approximate annual revenue?", options: REVENUE_OPTIONS },
       ],
     },
-    bundle: {
-      title: "Full Bundle",
-      subtitle: "Ongoing retainer",
+    quoting: {
+      title: "Quote Calculator",
+      subtitle: "Ongoing service",
       submitLabel: "Get my estimate",
-      incompleteHint: "Please answer all four questions.",
+      incompleteHint: "Please answer all three questions.",
       questions: [
-        { group: "calls", label: "Roughly how many calls do you get per week?", options: VOLUME_OPTIONS },
-        { group: "invoices", label: "Roughly how many invoices do you send per month?", options: VOLUME_OPTIONS },
+        { group: "volume", label: "Roughly how many quotes do you send per month?", options: VOLUME_OPTIONS },
+        { group: "scale", label: "Roughly how many staff do you have?", options: SCALE_OPTIONS },
+        { group: "revenue", label: "What's your approximate annual revenue?", options: REVENUE_OPTIONS },
+      ],
+    },
+    reporting: {
+      title: "Reporting Dashboard",
+      subtitle: "Ongoing service",
+      submitLabel: "Get my estimate",
+      incompleteHint: "Please answer both questions.",
+      questions: [
         { group: "scale", label: "Roughly how many staff do you have?", options: SCALE_OPTIONS },
         { group: "revenue", label: "What's your approximate annual revenue?", options: REVENUE_OPTIONS },
       ],
