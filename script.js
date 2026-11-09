@@ -150,7 +150,7 @@
       '<fieldset><legend>Which services interest you? (optional)</legend>' + svcs + "</fieldset>" +
       // Honeypot: hidden from people, bots fill it in.
       '<div class="calc-hp" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div>' +
-      '<label class="calc-check calc-consent"><input type="checkbox" name="consent"><span>Keystone may email me useful tips and offers. I can unsubscribe at any time. See our <a href="privacy.html" target="_blank" rel="noopener">privacy notice</a>.</span></label>' +
+      '<label class="calc-check calc-consent"><input type="checkbox" name="consent"><span>Keystone may email me useful tips and offers (up to 4 emails in the first 3 weeks, then about one a month). I can unsubscribe at any time. Keystone can see if an email is opened or a link is clicked. See our <a href="privacy.html" target="_blank" rel="noopener">privacy notice</a>.</span></label>' +
       '<div class="quote-submit-row"><button type="submit" class="quote-submit">Email me a code</button></div>' +
       '<p class="calc-msg" data-calc-msg role="status"></p></form>';
   }
