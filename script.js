@@ -107,6 +107,8 @@
   // ===== Instant estimate: free but email-verified (Keystone n8n backend) =====
   // Step 1: details + unticked consent -> 6-digit code by email. Step 2: code -> "from" prices + audit offer.
   var CALC_API = "https://keystoneconsultancy.app.n8n.cloud/webhook/";
+  // PAUSED (11 Nov 2026): true = the calculator shows "coming soon" and never contacts the server. Set to false at GREEN LIGHT.
+  var CALC_PAUSED = true;
   var CALC_SERVICES = [
     { value: "invoicing", label: "Invoice Automation" },
     { value: "phone", label: "AI Phone Booking" },
@@ -130,6 +132,7 @@
 
   // text/plain keeps this a "simple" cross-site request (no CORS preflight).
   function callApi(path, data) {
+    if (CALC_PAUSED) return Promise.resolve({ ok: false, comingSoon: true, message: "Instant estimates are coming soon." });
     return fetch(CALC_API + path, { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: JSON.stringify(data) })
       .then(function (r) { return r.json().catch(function () { return { ok: false, message: "Something went wrong. Please try again." }; }); })
       .catch(function () { return { ok: false, message: "We could not reach our server. Please check your connection and try again." }; });
@@ -197,6 +200,12 @@
       if (b) { b.disabled = on; b.classList.toggle("is-busy", on); }
     }
     function showForm() {
+      if (CALC_PAUSED) {
+        body.innerHTML = '<h3 class="quote-modal-title">Instant estimates: coming soon</h3>' +
+          '<p class="quote-modal-subtitle">Our online estimate is being finished. In the meantime, email us and we will send you prices the same day.</p>' +
+          '<a class="btn btn-primary quote-cta" href="mailto:keystoneconsultancy.co@gmail.com?subject=Estimate%20request">Email Keystone</a>';
+        return;
+      }
       body.innerHTML = formStep();
       var form = body.querySelector("[data-calc-form]");
       form.addEventListener("submit", function (e) {
