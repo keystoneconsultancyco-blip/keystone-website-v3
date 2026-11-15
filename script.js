@@ -180,7 +180,7 @@
       '<p class="quote-note">' + esc(r.note || "Exact price depends on business size.") + "</p>" +
       '<ul class="calc-packages">' + pk + "</ul>" +
       '<p class="calc-cta">' + esc(r.cta) + "</p>" +
-      '<a class="btn btn-primary quote-cta" href="mailto:keystoneconsultancy.co@gmail.com?subject=Finance%20Ops%20Audit">Book my Finance Ops Audit</a>';
+      '<a class="btn btn-primary quote-cta" href="mailto:bilal.khan@keystoneconsultancyuk.co.uk?subject=Finance%20Ops%20Audit">Book my Finance Ops Audit</a>';
   }
 
   function initCalculator() {
@@ -203,7 +203,7 @@
       if (CALC_PAUSED) {
         body.innerHTML = '<h3 class="quote-modal-title">Instant estimates: coming soon</h3>' +
           '<p class="quote-modal-subtitle">Our online estimate is being finished. In the meantime, email us and we will send you prices the same day.</p>' +
-          '<a class="btn btn-primary quote-cta" href="mailto:keystoneconsultancy.co@gmail.com?subject=Estimate%20request">Email Keystone</a>';
+          '<a class="btn btn-primary quote-cta" href="mailto:bilal.khan@keystoneconsultancyuk.co.uk?subject=Estimate%20request">Email Keystone</a>';
         return;
       }
       body.innerHTML = formStep();
